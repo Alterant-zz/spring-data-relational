@@ -44,6 +44,7 @@ import org.springframework.data.annotation.PersistenceCreator;
 import org.springframework.data.annotation.ReadOnlyProperty;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Persistable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jdbc.core.convert.DataAccessStrategy;
@@ -242,6 +243,28 @@ abstract class AbstractJdbcAggregateTemplateIntegrationTests {
 				.extracting(e -> e.id, e-> e.name, e -> e.content.size()) //
 				.containsExactly(tuple(two.id, two.name, 2));
 	}
+
+    @Test // GH-1601
+    void findAllByQueryWithConflictingSort() {
+
+        SimpleListParent one = template.save(SimpleListParent.of("one", "one_1"));
+        SimpleListParent two = template.save(SimpleListParent.of("two", "two_1", "two_2"));
+        SimpleListParent three = template.save(SimpleListParent.of("three", "three_1", "three_2", "three_3"));
+
+        CriteriaDefinition criteria = CriteriaDefinition.empty();
+        Query query = Query.query(criteria);
+        query = query.sort(Sort.by(Sort.Direction.ASC, "id"));  //changed this line
+        query = query.offset(23);  //changed this line
+        query = query.limit(11);  //changed this line
+
+        Pageable pageable = PageRequest.of(0, 3, Sort.by(Sort.Direction.DESC, "name"));
+
+        Iterable<SimpleListParent> reloadedById = template.findAll(query, SimpleListParent.class, pageable);
+
+        assertThat(reloadedById) //
+            .extracting(e -> e.id) //
+            .containsExactly(two.id, three.id, one.id);
+    }
 
 	@Test // GH-1803
 	void findAllByQueryWithColumns() {

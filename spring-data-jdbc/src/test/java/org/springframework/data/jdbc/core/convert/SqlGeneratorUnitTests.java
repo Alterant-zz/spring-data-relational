@@ -963,7 +963,43 @@ class SqlGeneratorUnitTests {
 				.containsOnly(entry("x_name", probe.name));
 	}
 
-	@Test // GH-1161
+    @Test // GH-2138
+    void selectByQueryWithRedundantPagination() {
+
+        SqlGenerator sqlGenerator = createSqlGenerator(DummyEntity.class);
+
+        DummyEntity probe = new DummyEntity();
+        probe.name = "Diego";
+
+        Criteria criteria = Criteria.where("name").is(probe.name);
+        Query query = Query.query(criteria);
+        query = query.sort(Sort.by(Sort.Order.asc("id")));  //changed this line
+        query = query.offset(23);  //changed this line
+        query = query.limit(11);  //changed this line
+
+        PageRequest pageRequest = PageRequest.of(2, 1, Sort.by(Sort.Order.asc("name")));
+
+        MapSqlParameterSource parameterSource = new MapSqlParameterSource();
+
+        String generatedSQL = sqlGenerator.selectByQuery(query, parameterSource, pageRequest);
+        assertThat(generatedSQL) //
+            .isNotNull() //
+            .contains(":x_name") //
+            .containsIgnoringCase("ORDER BY dummy_entity.x_name ASC") //
+            .containsIgnoringCase("LIMIT 1") //
+            .containsIgnoringCase("OFFSET 2 LIMIT 1") //
+            .doesNotContainIgnoringCase("LIMIT 11") //
+            .doesNotContainIgnoringCase("OFFSET 23")
+            .doesNotContainIgnoringCase("dummy_entity.id1 ASC");  //added this line
+
+        assertThat(parameterSource.getValues()) //
+            .containsOnly(entry("x_name", probe.name));
+
+        System.out.println(generatedSQL);
+    }
+
+
+    @Test // GH-1161
 	void backReferenceShouldConsiderRenamedParent() {
 
 		namingStrategy.setForeignKeyNaming(APPLY_RENAMING);
